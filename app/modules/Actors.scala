@@ -3,7 +3,7 @@ package modules
 import javax.inject.Inject
 
 import actors.StatisticsProvider
-import akka.actor.ActorSystem
+import akka.actor.{ActorSystem, Props}
 import com.google.inject.AbstractModule
 
 /**
@@ -12,8 +12,8 @@ import com.google.inject.AbstractModule
   * Injects the ActorSystem in the module implementation so it can create actors.
   */
 class Actors @Inject() (system: ActorSystem) extends ApplicationActors {
-  system.actorOf(
-    props = StatisticsProvider.props,
+  val providerReference = system.actorOf(
+    Props[StatisticsProvider],
     name = "statisticsProvider"
   )
 }
