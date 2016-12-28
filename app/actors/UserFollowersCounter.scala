@@ -11,6 +11,11 @@ class UserFollowersCounter extends Actor with ActorLogging {
     case message => // do nothing
   }
 
+  override def unhandled(message: Any): Unit = {
+    log.warning("Unhandled message {} message from {}", message, sender())
+    super.unhandled(message)
+  }
+
 }
 
 

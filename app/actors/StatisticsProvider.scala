@@ -28,18 +28,17 @@ class StatisticsProvider extends Actor with ActorLogging {
 
     // Actors created using the "context.actorOf" method become children of this actor.
     // All children are accessible through the "context.children" collection,
-    // or by their name with the "context.child(childname)" method.
-    followersCounter = context.actorOf(
-      Props[UserFollowersCounter],
-      name = "serFollowersCounter"
-    )
+    // or by their name with the "context.child(childName)" method.
+    followersCounter = context.actorOf(Props[UserFollowersCounter], name = "serFollowersCounter")
 
     storage = context.actorOf(Props[Storage], name = "storage")
 
-    reachComputer = context.actorOf(
-      TweetReachComputer.props(followersCounter, storage),
-      name = "tweetReachComputer"
-    )
+    reachComputer = context.actorOf(TweetReachComputer.props(followersCounter, storage), name = "tweetReachComputer")
+  }
+
+  override def unhandled(message: Any): Unit = {
+    log.warning("Unhandled message {} message from {}", message, sender())
+    super.unhandled(message)
   }
 
 }

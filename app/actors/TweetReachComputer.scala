@@ -11,10 +11,15 @@ class TweetReachComputer(followersCounter: ActorRef, storage: ActorRef) extends 
     case message => // do nothing
   }
 
+  override def unhandled(message: Any): Unit = {
+    log.warning("Unhandled message {} message from {}", message, sender())
+    super.unhandled(message)
+  }
+
 }
 
 
-object tweetReachComputer {
+object TweetReachComputer {
   def props(followersCounter: ActorRef, storage: ActorRef) =
     Props(classOf[TweetReachComputer], followersCounter, storage)
 }
