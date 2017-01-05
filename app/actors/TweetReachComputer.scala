@@ -1,6 +1,7 @@
 package actors
 
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
+import akka.pattern.pipe
 import messages._
 import play.api.libs.json.JsArray
 import play.api.libs.oauth.OAuthCalculator
@@ -23,14 +24,17 @@ class TweetReachComputer(userFollowersCounter: ActorRef, storage: ActorRef) exte
 
   override def receive = {
     case ComputeReach(tweetId) =>
-      log.info("Starting to compute tweet reach for tweet {}", tweetId)
       // Fetches the retweets from Twitter and acts upon the completion of this future result
-      fetchRetweets(tweetId, sender()).map { fetchedRetweets =>
-        followerCountsByRetweet = followerCountsByRetweet + (fetchedRetweets -> List.empty)
-        fetchedRetweets.retweeters.foreach { rt =>
-          // Asks for the followers count of each user that retweeted the tweet
-          userFollowersCounter ! FetchFollowerCount(tweetId, rt)
-        }
+      log.info("Starting to compute tweet reach for tweet {}", tweetId)
+      // Pipes the fetchRetweets future to the actor
+      fetchRetweets(tweetId, sender()) pipeTo self
+
+    case fetchedRetweets: FetchedRetweet =>
+      // Receives the result of the future
+      followerCountsByRetweet += fetchedRetweets -> List.empty
+      fetchedRetweets.retweeters.foreach { rt =>
+        // Asks for the followers count of each user that retweeted the tweet
+        userFollowersCounter ! FetchFollowerCount(fetchedRetweets.tweetId, rt)
       }
 
     case count @ FollowerCount(tweetId, _, _) =>
