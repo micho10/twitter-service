@@ -2,6 +2,9 @@ package actors
 
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 import messages._
+import play.api.libs.json.JsArray
+import play.api.libs.oauth.OAuthCalculator
+import play.api.libs.ws.WS
 
 import scala.concurrent.Future
 
@@ -12,7 +15,8 @@ import scala.concurrent.Future
   *
   * Created by carlos on 27/12/16.
   */
-class TweetReachComputer(userFollowersCounter: ActorRef, storage: ActorRef) extends Actor with ActorLogging {
+class TweetReachComputer(userFollowersCounter: ActorRef, storage: ActorRef) extends Actor with ActorLogging
+  with TwitterCredentials {
 
   // Sets up a cache to store the currently computed follower counts for a retweet
   var followerCountsByRetweet = Map.empty[FetchedRetweet, List[FollowerCount]]
@@ -29,7 +33,7 @@ class TweetReachComputer(userFollowersCounter: ActorRef, storage: ActorRef) exte
         }
       }
 
-    case count @  FollowerCount(tweetId, _, _) =>
+    case count @ FollowerCount(tweetId, _, _) =>
       log.info("Received followers count for tweet {}", tweetId)
       fetchedRetweetsFor(tweetId).foreach { fetchedRetweets =>
         updateFollowersCount(tweetId, fetchedRetweets, count)
@@ -70,7 +74,23 @@ class TweetReachComputer(userFollowersCounter: ActorRef, storage: ActorRef) exte
   }
 
 
-  def fetchRetweets(tweetId: BigInt, client: ActorRef): Future[FetchedRetweet] = ???
+  def fetchRetweets(tweetId: BigInt, client: ActorRef): Future[FetchedRetweet] = {
+    credentials.map {
+      case (consumerKey, requestToken) =>
+        WS.url("https://api.twitter.com/1.1/statuses/retweeters/ids.json")
+          .sign(OAuthCalculator(consumerKey, requestToken))
+          .withQueryString("id" -> tweetId.toString)
+          .withQueryString("stringify_ids" -> "true")
+          .get().map { response =>
+          if (response.status == 200) {
+            val ids = (response.json \ "ids").as[JsArray].value.map(v => BigInt(v.as[String])).toList
+            FetchedRetweet(tweetId, ids, client)
+          } else throw new RuntimeException(s"Could not retrieve details for Tweet $tweetId")
+        }
+    }.getOrElse{
+      Future.failed(new RuntimeException("You did not configure the Twitter credentials correctly"))
+    }
+  }
 
 
   override def unhandled(message: Any): Unit = {
