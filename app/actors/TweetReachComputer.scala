@@ -19,6 +19,7 @@ class TweetReachComputer(userFollowersCounter: ActorRef, storage: ActorRef) exte
 
   override def receive = {
     case ComputeReach(tweetId) =>
+      log.info("Starting to compute tweet reach for tweet {}", tweetId)
       // Fetches the retweets from Twitter and acts upon the completion of this future result
       fetchRetweets(tweetId, sender()).map { fetchedRetweets =>
         followerCountsByRetweet = followerCountsByRetweet + (fetchedRetweets -> List.empty)
@@ -28,7 +29,7 @@ class TweetReachComputer(userFollowersCounter: ActorRef, storage: ActorRef) exte
         }
       }
 
-    case count @  FollowerCount(tweetId, _) =>
+    case count @  FollowerCount(tweetId, _, _) =>
       log.info("Received followers count for tweet {}", tweetId)
       fetchedRetweetsFor(tweetId).foreach { fetchedRetweets =>
         updateFollowersCount(tweetId, fetchedRetweets, count)
@@ -45,7 +46,7 @@ class TweetReachComputer(userFollowersCounter: ActorRef, storage: ActorRef) exte
   case class FetchedRetweet(tweetId: BigInt, retweeters: List[String], client: ActorRef)
 
 
-  def fetchedRetweetsFor(tweetId: BigInt) = followerCountsByRetweet.keys.find(_.tweet == tweetId)
+  def fetchedRetweetsFor(tweetId: BigInt) = followerCountsByRetweet.keys.find(_.tweetId == tweetId)
 
 
   def updateFollowersCount(tweetId: BigInt, fetchedRetweets: FetchedRetweet, count: FollowerCount) = {
