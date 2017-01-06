@@ -10,8 +10,8 @@ libraryDependencies ++= Seq(
   jdbc,
   cache,
   ws,
-  "org.scalatestplus.play" %% "scalatestplus-play" % "1.5.1" % Test,
-  "com.typesafe.akka" % "akka-actor_2.11" % "2.4.16",
-  "com.typesafe.akka" % "akka-slf4j_2.11" % "2.4.16"
+  "org.reactivemongo"      %% "reactivemongo"             % "0.12.1",
+  "org.scalatestplus.play" %% "scalatestplus-play"        % "1.5.1"   % Test,
+  "com.typesafe.akka"       % "akka-actor_2.11"           % "2.4.16",
+  "com.typesafe.akka"       % "akka-slf4j_2.11"           % "2.4.16"
 )
-
