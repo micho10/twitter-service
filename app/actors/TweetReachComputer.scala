@@ -8,6 +8,7 @@ import play.api.libs.oauth.OAuthCalculator
 import play.api.libs.ws.WS
 
 import scala.concurrent.Future
+import scala.util.control.NonFatal
 
 /**
   * Passes the reference to other actors as a constructor parameter.
@@ -22,12 +23,24 @@ class TweetReachComputer(userFollowersCounter: ActorRef, storage: ActorRef) exte
   // Sets up a cache to store the currently computed follower counts for a retweet
   var followerCountsByRetweet = Map.empty[FetchedRetweet, List[FollowerCount]]
 
+  implicit val executionContext = context.dispatcher
+
+  // Defines a case class to hold the context of the failure
+  case class RetweetFetchingFailed(tweetId: BigInt, cause: Throwable, client: ActorRef)
+
   override def receive = {
+
     case ComputeReach(tweetId) =>
       // Fetches the retweets from Twitter and acts upon the completion of this future result
       log.info("Starting to compute tweet reach for tweet {}", tweetId)
-      // Pipes the fetchRetweets future to the actor
-      fetchRetweets(tweetId, sender()) pipeTo self
+      val originalSender = sender()
+      // Handles the recovery of the failure of the future
+      fetchRetweets(tweetId, sender()).recover{
+        case NonFatal(t) =>
+          // Wraps the cause of the failure together with some context in the case class designed for this purpose
+          RetweetFetchingFailed(tweetId, t, originalSender)
+        // Pipes the "safe" future
+      } pipeTo self
 
     case fetchedRetweets: FetchedRetweet =>
       // Receives the result of the future
@@ -52,7 +65,6 @@ class TweetReachComputer(userFollowersCounter: ActorRef, storage: ActorRef) exte
 
 
   case class FetchedRetweet(tweetId: BigInt, retweeters: List[String], client: ActorRef)
-
 
   def fetchedRetweetsFor(tweetId: BigInt) = followerCountsByRetweet.keys.find(_.tweetId == tweetId)
 
