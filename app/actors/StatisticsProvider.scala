@@ -1,6 +1,8 @@
 package actors
 
-import akka.actor.{Actor, ActorLogging, ActorRef, Props}
+import akka.actor.SupervisorStrategy.{Escalate, Restart}
+import akka.actor.{Actor, ActorLogging, ActorRef, OneForOneStrategy, Props, SupervisorStrategy}
+import akka.stream.ConnectionException
 
 /**
   * Created by carlos on 26/12/16.
@@ -40,6 +42,20 @@ class StatisticsProvider extends Actor with ActorLogging {
     log.warning("Unhandled message {} message from {}", message, sender())
     super.unhandled(message)
   }
+
+  override def supervisorStrategy: SupervisorStrategy =
+    // Uses a OneForOneStrategy, retrying up to 3 times within 2 minutes before stopping the actor
+    OneForOneStrategy(maxNrOfRetries = 3, withinTimeRange = 2.minutes) {
+      case _: ConnectionException =>
+        // Restarts the actor if faced with a ConnectionException
+        Restart
+      case t: Throwable =>
+        // Applies the default supervisor strategy for any other kind of failure, escalating it if that strategy
+        // doesn't handle the failure
+        super.supervisorStrategy.decider.applyOrElse(t, _ => Escalate)
+    }
+
+
 
 }
 
