@@ -1,6 +1,6 @@
 package actors
 
-import akka.actor.{Actor, ActorLogging, ActorRef, Props}
+import akka.actor.{Actor, ActorLogging, ActorRef, Cancellable, Props}
 import akka.pattern.pipe
 import messages._
 import play.api.libs.json.JsArray
@@ -27,6 +27,16 @@ class TweetReachComputer(userFollowersCounter: ActorRef, storage: ActorRef) exte
 
   // Defines a case class to hold the context of the failure
   case class RetweetFetchingFailed(tweetId: BigInt, cause: Throwable, client: ActorRef)
+
+  // Initializes the scheduler for resending unacknowledged messages every 20 seconds
+  val retryScheduler: Cancellable = context.system.scheduler.schedule(1.second, 20.seconds, self, ResendUnacknowledged)
+
+
+  override def postStop(): Unit = {
+    // Cancels the scheduler when the actor is stopped
+    retryScheduler.cancel()
+  }
+
 
   override def receive = {
 
@@ -61,10 +71,24 @@ class TweetReachComputer(userFollowersCounter: ActorRef, storage: ActorRef) exte
         // Removes the state once the score has been persisted
         followerCountsByRetweet = followerCountsByRetweet.filterNot(_._1 == key)
       }
+
+    case ResendUnacknowledged =>
+      // Filters out the cases for which all counts have been received
+      val unacknowledged = followerCountsByRetweet.filterNot {
+        case (retweet, counts) =>
+          retweet.retweeters.size != counts.size
+      }
+      unacknowledged.foreach {case (retweet, counts) =>
+        val score = counts.map(_.followersCount).sum
+        // Sends a new StoreReach message to the storage
+        storage ! StoreReach(retweet.tweetId, score)
+      }
   }
 
 
+  case object ResendUnacknowledged
   case class FetchedRetweet(tweetId: BigInt, retweeters: List[String], client: ActorRef)
+
 
   def fetchedRetweetsFor(tweetId: BigInt) = followerCountsByRetweet.keys.find(_.tweetId == tweetId)
 
