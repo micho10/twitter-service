@@ -3,7 +3,8 @@ package actors
 import actors.StatisticsProvider.ServiceUnavailable
 import akka.actor.{Actor, ActorLogging, Props}
 import akka.dispatch.ControlMessage
-import messages.{ComputeReach, FollowerCount}
+import akka.pattern.CircuitBreaker
+import messages.{ComputeReach, FetchFollowerCount, FollowerCount}
 import org.joda.time.{DateTime, Interval}
 import play.api.libs.oauth.OAuthCalculator
 import play.api.libs.ws.WS
@@ -16,9 +17,31 @@ import scala.concurrent.Future
   */
 class UserFollowersCounter extends Actor with ActorLogging with TwitterCredentials {
 
+  // Reuses the actor's dispatcher as ExecutionContext for the pipe
+  implicit val executionContext = context.dispatcher
+
+  val breaker = new CircuitBreaker(
+    context.system.scheduler,
+    maxFailures = 5,
+    callTimeout = 2.seconds,
+    resetTimeout = 1.minute
+  ).onOpen(
+    log.info("Circuit breaker open")
+  ).onHalfOpen(
+    log.info("Circuit breaker half-open")
+  ).onClose(
+    log.info("Circuit breaker closed")
+  )
+
+
   override def receive = {
+    case FetchFollowerCount(tweetId, user) =>
+      // Plugs the circuit breaker, which wraps tha Future result of the call to Twitter
+      breaker.withCircuitBreaker(fetchFollowerCount(tweetId, user))
+      // Pipes the result to send it back to the TweetReachComputer
+      pipeTo sender()
     case TwitterRateLimitReached(reset) =>
-      // Schedules a message to remind you whne you've reached the window reset
+      // Schedules a message to remind you when you've reached the window reset
       context.system.scheduler.scheduleOnce(
         new Interval(DateTime.now, reset).toDurationMillis.millis, self, ResumeService
       )
@@ -43,6 +66,13 @@ class UserFollowersCounter extends Actor with ActorLogging with TwitterCredentia
   val LimitReset      = "X-Rate-Limit-Reset"
 
 
+  /**
+    * Defines the fetchFollowerCount method that makes the call to Twitter
+    *
+    * @param tweetId
+    * @param userId
+    * @return
+    */
   private def fetchFollowerCount(tweetId: BigInt, userId: BigInt): Future[FollowerCount] = {
     credentials.map {
       case (consumerKey, requestToken) =>
