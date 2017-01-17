@@ -1,9 +1,10 @@
 package actors
 
+import actors.StatisticsProvider.ServiceUnavailable
 import akka.actor.{Actor, ActorLogging, Props}
 import akka.dispatch.ControlMessage
-import messages.FollowerCount
-import org.joda.time.DateTime
+import messages.{ComputeReach, FollowerCount}
+import org.joda.time.{DateTime, Interval}
 import play.api.libs.oauth.OAuthCalculator
 import play.api.libs.ws.WS
 
@@ -16,7 +17,19 @@ import scala.concurrent.Future
 class UserFollowersCounter extends Actor with ActorLogging with TwitterCredentials {
 
   override def receive = {
-    case message => // do nothing
+    case TwitterRateLimitReached(reset) =>
+      // Schedules a message to remind you whne you've reached the window reset
+      context.system.scheduler.scheduleOnce(
+        new Interval(DateTime.now, reset).toDurationMillis.millis, self, ResumeService
+      )
+      context.become({
+        case reach @ ComputeReach(_) =>
+          // Rejects all incoming messages
+          sender() ! ServiceUnavailable
+        case ResumeService =>
+          // Resumes the service by cancelling the temporary behaviour
+          context.unbecome()
+      })
   }
 
 
@@ -73,3 +86,5 @@ case class TwitterRateLimitReached(reset: DateTime) extends ControlMessage
 case class FollowerCountUnavailable(tweetId: BigInt, user: BigInt)
 case object UserFollowersCounterUnavailable extends ControlMessage
 case object UserFollowersCounterAvailable extends ControlMessage
+
+case object ResumeService

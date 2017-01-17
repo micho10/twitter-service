@@ -5,6 +5,7 @@ import javax.inject.Inject
 import actors.StatisticsProvider
 import akka.actor.{ActorSystem, Props}
 import com.google.inject.AbstractModule
+import play.libs.Akka
 
 /**
   * Created by carlos on 26/12/16.
@@ -12,8 +13,10 @@ import com.google.inject.AbstractModule
   * Injects the ActorSystem in the module implementation so it can create actors.
   */
 class Actors @Inject() (system: ActorSystem) extends ApplicationActors {
-  val providerReference = system.actorOf(
-    Props[StatisticsProvider],
+  Akka.system.actorOf(
+    props = StatisticsProvider.props
+      // Specifies the custom dispatcher you set up in the configuration
+      .withDispatcher("control-aware-mailbox"),
     name = "statisticsProvider"
   )
 }
